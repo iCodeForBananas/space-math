@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- Source for marquee.png (1400x560). Re-render with headless Chrome:
+     chrome --headless=new --hide-scrollbars --force-device-scale-factor=1
+            --window-size=1400,560 --screenshot=marquee.png marquee.html -->
+<html><head><meta charset="utf-8"><style>
+  * { box-sizing: border-box; margin: 0; }
+  body { width: 1400px; height: 560px; overflow: hidden; position: relative; color: #fff;
+    font-family: ui-rounded, "Segoe UI", system-ui, sans-serif;
+    background: radial-gradient(ellipse at 15% 110%, #5b34b8 0%, transparent 55%),
+                radial-gradient(ellipse at 95% -10%, #1e3a8a 0%, transparent 50%),
+                linear-gradient(160deg, #141a3d, #0c0f24 60%, #1b1440); }
+  #stars { position: absolute; inset: 0; }
+  .wrap { position: relative; display: flex; align-items: center; height: 100%; padding: 0 80px; gap: 70px; }
+  .brand { flex: 0 0 560px; display: flex; flex-direction: column; gap: 26px; }
+  .row { display: flex; align-items: center; gap: 28px; }
+  .row img { width: 128px; height: 128px; border-radius: 28px; box-shadow: 0 0 0 3px #ffffff30, 0 12px 40px #0008; }
+  h1 { font-size: 64px; font-weight: 800; letter-spacing: -1px; }
+  p { font-size: 28px; line-height: 1.35; color: #c7d2fe; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chips span { font-size: 18px; font-weight: 600; padding: 7px 14px; border-radius: 999px; background: #ffffff14; border: 1px solid #ffffff26; color: #e0e7ff; }
+  .chips span.y { background: #facc15; color: #1a1a1a; border-color: #facc15; }
+  .ipad { flex: 1; padding: 16px; border-radius: 30px; background: #1f2230; box-shadow: 0 0 0 2px #3a3f55, 0 30px 70px #000a; transform: rotate(-2deg); }
+  .ipad img { display: block; width: 100%; border-radius: 16px; }
+</style></head><body>
+  <canvas id="stars" width="1400" height="560"></canvas>
+  <div class="wrap">
+    <div class="brand">
+      <div class="row"><img src="../../public/icon-512.png"><h1>Space Math</h1></div>
+      <p>A space-themed math game for kids in K–3, with spaced repetition that always knows what to practice next.</p>
+      <div class="chips"><span class="y">iPad · iPhone · Android · Web</span><span>No ads · No accounts · Offline</span></div>
+    </div>
+    <div class="ipad"><img src="game.png"></div>
+  </div>
+  <script>
+    const c = document.getElementById('stars').getContext('2d');
+    let s = 7; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 220; i++) {
+      c.globalAlpha = 0.25 + r() * 0.65; c.fillStyle = '#fff';
+      c.beginPath(); c.arc(r() * 1400, r() * 560, r() < 0.9 ? r() * 1.2 + 0.3 : 2, 0, 7); c.fill();
+    }
+  </script>
+</body></html>
