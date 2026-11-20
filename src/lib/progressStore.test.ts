@@ -20,11 +20,13 @@ describe("recordAnswer", () => {
     expect(d).toEqual(emptyProgress());
   });
 
-  it("keeps mastery sticky after a later miss", () => {
+  it("tracks current mastery, remembering when it was first reached", () => {
     let d = emptyProgress();
     d = recordAnswer(d, { skillId: "add-1-5", sessionId: "s1", correct: true, mastered: true }, T0);
     d = recordAnswer(d, { skillId: "add-1-5", sessionId: "s1", correct: false, mastered: false }, days(1));
     expect(d.skills["add-1-5"].firstMasteredAt).toBe(T0.toISOString());
+    expect(d.skills["add-1-5"].mastered).toBe(false);
+    expect(summarizeProgress(d, days(1)).overallMasteredCount).toBe(0);
   });
 
   it("prunes recent rows older than two weeks", () => {
@@ -53,6 +55,11 @@ describe("summarizeProgress", () => {
 });
 
 describe("normalizeProgress", () => {
+  it("treats skills mastered in older saves as still mastered", () => {
+    const old = { version: 1, skills: { "add-1-5": { correct: 3, total: 3, sessions: 1, lastSessionId: "s", lastPlayed: T0.toISOString(), firstMasteredAt: T0.toISOString() } }, recent: [], totalSessions: 1, totalQuestions: 3, lastSessionId: "s" };
+    expect(normalizeProgress(old).skills["add-1-5"].mastered).toBe(true);
+  });
+
   it("falls back to empty on garbage", () => {
     expect(normalizeProgress("x")).toEqual(emptyProgress());
     expect(normalizeProgress({ version: 99 })).toEqual(emptyProgress());

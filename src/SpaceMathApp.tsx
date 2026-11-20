@@ -42,7 +42,8 @@ function recordQuestionProgress(
   sessionId: string,
 ) {
   if (!findSkill(topicKey)) return;
-  // The generator's own `learned` flag: sticky, never cleared by a later miss.
+  // The scheduler's `learned` flag: mastered right now (it can be lost after
+  // repeated misses on review).
   const mastered = records[topicKey]?.learned ?? false;
   saveProgress(recordAnswer(loadProgress(), { skillId: topicKey, sessionId, correct: wasCorrect, mastered }));
 }

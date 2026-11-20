@@ -20,6 +20,7 @@ export interface SkillTotals {
   lastSessionId: string | null;
   lastPlayed: string | null;
   firstMasteredAt: string | null;
+  mastered: boolean; // right now; a skill can lose mastery after repeated misses
 }
 
 export interface RecentRow {
@@ -56,6 +57,7 @@ export function recordAnswer(
     lastSessionId: null,
     lastPlayed: null,
     firstMasteredAt: null,
+    mastered: false,
   };
   const next: SkillTotals = {
     correct: prev.correct + (answer.correct ? 1 : 0),
@@ -64,6 +66,7 @@ export function recordAnswer(
     lastSessionId: answer.sessionId,
     lastPlayed: at,
     firstMasteredAt: prev.firstMasteredAt ?? (answer.mastered ? at : null),
+    mastered: answer.mastered,
   };
   const cutoff = now.getTime() - RECENT_DAYS * DAY_MS;
   const recent = [
@@ -83,9 +86,16 @@ export function recordAnswer(
 export function normalizeProgress(raw: unknown): ProgressData {
   if (!raw || typeof raw !== "object" || (raw as ProgressData).version !== 1) return emptyProgress();
   const r = raw as ProgressData;
+  const skills: Record<string, SkillTotals> = {};
+  if (r.skills && typeof r.skills === "object") {
+    for (const [k, v] of Object.entries(r.skills)) {
+      // Saves from before mastery could be lost: mastered once meant mastered.
+      skills[k] = { ...v, mastered: v.mastered ?? v.firstMasteredAt !== null };
+    }
+  }
   return {
     version: 1,
-    skills: r.skills && typeof r.skills === "object" ? r.skills : {},
+    skills,
     recent: Array.isArray(r.recent) ? r.recent : [],
     totalSessions: r.totalSessions ?? 0,
     totalQuestions: r.totalQuestions ?? 0,
@@ -164,7 +174,7 @@ export function summarizeProgress(data: ProgressData, now: Date = new Date()): P
       key: skill.key,
       name: skill.name,
       standard: skill.standard,
-      status: t?.firstMasteredAt ? "mastered" : total > 0 ? "practicing" : "not-started",
+      status: t?.mastered ? "mastered" : total > 0 ? "practicing" : "not-started",
       correct,
       total,
       accuracy: total > 0 ? correct / total : null,
@@ -179,8 +189,8 @@ export function summarizeProgress(data: ProgressData, now: Date = new Date()): P
   for (const skill of SKILLS) {
     if (!weekSkills.has(skill.key)) continue;
     const t = data.skills[skill.key];
-    if (t?.firstMasteredAt && Date.parse(t.firstMasteredAt) >= weekAgo) newlyMastered.push(skill.name);
-    else if (t?.firstMasteredAt) reviewedCount++;
+    if (t?.mastered && t.firstMasteredAt && Date.parse(t.firstMasteredAt) >= weekAgo) newlyMastered.push(skill.name);
+    else if (t?.mastered) reviewedCount++;
     else practicingCount++;
   }
 
