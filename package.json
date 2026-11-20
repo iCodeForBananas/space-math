@@ -33,7 +33,9 @@
     "tailwindcss": "^4",
     "typescript": "5.9.3",
     "vite": "^8.0.0",
-    "vitest": "^5.0.0"
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.0",
+    "workbox-window": "^7.4.1"
   },
   "description": "A space-themed math game for kids in kindergarten through grade 3, with spaced repetition. iOS, Android and web.",
   "license": "MIT",

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Rocket, Star, Trophy, ChevronRight, Sparkles, Check, X, BarChart3 } from "lucide-react";
 import { Button } from "./Button";
 import ProgressScreen from "./ProgressScreen";
+import InstallCard from "./InstallCard";
 import { loadProgress, recordAnswer, saveProgress } from "./lib/progressStore";
 import styles from "./space-math.module.css";
 import { findSkill } from "./lib/spaceMathSkills";
@@ -770,6 +771,7 @@ export default function SpaceMathApp() {
               <Button variant='primary' size='xl' onClick={startGame}>
                 START MISSION <ChevronRight className='w-5 h-5' />
               </Button>
+              <InstallCard />
             </motion.div>
           )}
 
