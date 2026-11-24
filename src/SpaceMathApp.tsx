@@ -535,7 +535,7 @@ const StarBank = ({ score, onClear }: { score: number; onClear: () => void }) =>
 
 // ─── SessionProgressBar ───────────────────────────────────────────────────────
 
-const SESSION_GOAL = 25;
+const SESSION_GOAL = 20;
 
 const SessionProgressBar = ({ correct }: { correct: number }) => {
   const pct = Math.min((correct / SESSION_GOAL) * 100, 100);
@@ -1074,7 +1074,7 @@ export default function SpaceMathApp() {
                   SESSION COMPLETE!
                 </h2>
                 <p className='text-2xl sm:text-3xl text-ink-muted'>
-                  You answered <span className='text-ink-primary font-bold'>25</span> questions correctly!
+                  You answered <span className='text-ink-primary font-bold'>{SESSION_GOAL}</span> questions correctly!
                 </p>
               </div>
               <div className='flex flex-col gap-4 items-center'>

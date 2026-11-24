@@ -127,7 +127,7 @@ describe("selectTopic", () => {
 
 // A learner who almost always gets learned skills right, gets anything newer
 // right 60% of the time at first and better with practice, playing one
-// 25-correct round a day
+// 20-correct round a day (SESSION_GOAL in SpaceMathApp.tsx)
 describe("simulated rounds", () => {
   function play(seed: number) {
     const rng = mulberry32(seed);
@@ -136,7 +136,7 @@ describe("simulated rounds", () => {
     let records: Record<string, TopicRecord> = {};
     let lastKey: string | null = null;
     const afterMiss: number[] = []; // tier of each question asked right after a miss
-    const byPosition: number[][] = Array.from({ length: 25 }, () => []);
+    const byPosition: number[][] = Array.from({ length: 20 }, () => []);
     const seen: Record<string, number> = {};
 
     for (let round = 0; round < 30; round++) {
@@ -145,12 +145,12 @@ describe("simulated rounds", () => {
       let correctCount = 0;
       let asked = 0;
       let lastWasMiss = false;
-      while (correctCount < 25 && asked < 200) {
+      while (correctCount < 20 && asked < 200) {
         const topic = selectTopic(records, lastKey, momentum, rng, now);
         const tier = topicTier(records, topic.key);
         const anyLearned = Object.values(records).some((r) => r.learned);
         if (lastWasMiss && anyLearned) afterMiss.push(tier);
-        if (asked < 25) byPosition[asked].push(tier > 0 ? 1 : 0);
+        if (asked < 20) byPosition[asked].push(tier > 0 ? 1 : 0);
         seen[topic.key] = (seen[topic.key] ?? 0) + 1;
         const correct = rng() < (tier === 0 ? 0.97 : Math.min(0.95, 0.6 + 0.05 * seen[topic.key]));
         const updated = advanceRecord(records[topic.key] ?? DEFAULT_RECORD, correct, now);
@@ -178,7 +178,7 @@ describe("simulated rounds", () => {
       const flat = rows.flat();
       return flat.reduce((a, b) => a + b, 0) / flat.length;
     };
-    expect(share(byPosition.slice(15, 25))).toBeGreaterThan(share(byPosition.slice(0, 3)) + 0.2);
+    expect(share(byPosition.slice(12, 20))).toBeGreaterThan(share(byPosition.slice(0, 3)) + 0.2);
   });
 
   it("still makes progress up the ladder", () => {
