@@ -37,7 +37,10 @@ export interface Problem {
   // An analog clock drawn above the question (tell-time).
   clock?: { hour: number; minute: number };
   // A picture graph or bar graph drawn above the question.
-  graph?: { kind: "picture" | "bar"; title: string; rows: [string, number][] };
+  graph?: { kind: "picture" | "bar" | "line"; title: string; rows: [string, number][] };
+  // A ruler drawn above the question with an object lying along it, from
+  // `start` to `end` (ruler-measure).
+  ruler?: { start: number; end: number; max: number; unit: "in" | "cm" };
 }
 
 // ─── Problem Generator ────────────────────────────────────────────────────────
@@ -67,7 +70,7 @@ const randInt = (lo: number, hi: number): number => Math.floor(Math.random() * (
 // 4 options (or fewer if the pool is small) drawn from a fixed pool, always
 // including the answer, in a stable order.
 function anyOpts<T>(answer: T, pool: T[]): T[] {
-  const others = pool.filter((p) => p !== answer).sort(() => Math.random() - 0.5).slice(0, 3);
+  const others = pool.filter((p, i) => p !== answer && pool.indexOf(p) === i).sort(() => Math.random() - 0.5).slice(0, 3);
   return [answer, ...others].sort((a, b) => pool.indexOf(a) - pool.indexOf(b));
 }
 
@@ -959,16 +962,21 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
   }
 
   if (type === "mental-hundred") {
-    const base = (Math.floor(Math.random() * 8) + 1) * 100; // 100..800
-    const isAdd = base <= 800;
-    const answer = isAdd ? base + 100 : base - 100;
+    // Lessons 10-1 and 11-1: mentally add or subtract 10 or 100 from a
+    // number 100-900. The ±10 cases include the tricky ones where the tens
+    // digit is 9 or 0 (395 + 10, 402 - 10).
+    const n = randInt(Math.max(min, 110), Math.min(max, 890));
+    const by = Math.random() < 0.5 ? 10 : 100;
+    const isAdd = Math.random() < 0.5;
+    const answer = isAdd ? n + by : n - by;
+    const near = [n + 1, n - 1, isAdd ? n - by : n + by, isAdd ? n + (by === 10 ? 100 : 10) : n - (by === 10 ? 100 : 10)];
     return {
       id,
       type,
-      question: isAdd ? `${base} + 100 = ?` : `${base} − 100 = ?`,
+      question: isAdd ? `${n} + ${by} = ?` : `${n} − ${by} = ?`,
       answer,
-      options: numOpts(answer),
-      signature: `m100:${isAdd ? "+" : "-"}-${base}`,
+      options: anyOpts(answer, [answer, ...near].filter((v, i, a) => a.indexOf(v) === i)).sort((x, y) => x - y),
+      signature: `m100:${isAdd ? "+" : "-"}${by}-${n}`,
     };
   }
 
@@ -982,11 +990,11 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
       return { id, type, question, answer, options: numOpts(answer), signature: `awh2:${a},${b}` };
     }
     if (variant === 1) {
-      // Independent draws, not capped to a shared total — three whole-hundreds
-      // addends can genuinely sum past 900 (e.g. 600 + 300 + 400 = 1300).
-      const a = hundreds(9);
-      const b = hundreds(9);
-      const c = hundreds(9);
+      // Three whole-hundreds addends, total at most 1,000 (Grade 2 adds
+      // within 1,000): 300 + 200 + 400 = ?
+      const a = hundreds(6);
+      const b = hundreds(Math.max(1, 8 - a / 100));
+      const c = hundreds((1000 - a - b) / 100);
       const { question, answer } = chainAdd([a, b, c], null);
       return { id, type, question, answer, options: numOpts(answer), signature: `awh3:${a},${b},${c}` };
     }
@@ -1065,7 +1073,7 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
     const variant = Math.floor(Math.random() * 3);
     if (variant === 0) {
       // Two 3-digit numbers, no carrying: 111 + 121 = ?
-      const hA = Math.floor(Math.random() * 9) + 1;
+      const hA = Math.floor(Math.random() * 8) + 1; // 1..8, so hB can be at least 1
       const tA = Math.floor(Math.random() * 10);
       const oA = Math.floor(Math.random() * 10);
       const hB = Math.floor(Math.random() * (9 - hA)) + 1;
@@ -1077,11 +1085,12 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
       return { id, type, question, answer, options: numOpts(answer), signature: `a3d-nc:${left},${right}` };
     }
     if (variant === 1) {
-      // Two 3-digit numbers, with carrying: 397 + 984 = ?
-      const hA = Math.floor(Math.random() * 8) + 1;
+      // Two 3-digit numbers, with carrying: 257 + 384 = ?. Hundreds sum to
+      // at most 8 so a carry from the tens still stays within 1,000.
+      const hA = Math.floor(Math.random() * 7) + 1;
       const tA = Math.floor(Math.random() * 10);
       const oA = Math.floor(Math.random() * 8) + 1; // 1..8
-      const hB = Math.floor(Math.random() * (9 - hA)) + 1;
+      const hB = Math.floor(Math.random() * (8 - hA)) + 1;
       const tB = Math.floor(Math.random() * 10);
       const oB = Math.floor(Math.random() * oA) + (10 - oA); // forces oA + oB >= 10, both single digits
       const left = hA * 100 + tA * 10 + oA;
@@ -1089,11 +1098,11 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
       const { question, answer } = chainAdd([left, right], null);
       return { id, type, question, answer, options: numOpts(answer), signature: `a3d-c:${left},${right}` };
     }
-    // Three 3-digit addends: 456 + 678 + 789 = ?
+    // Three 3-digit addends, total within 1,000: 215 + 342 + 189 = ?
     const terms = [
-      Math.floor(Math.random() * 700) + 100,
-      Math.floor(Math.random() * 700) + 100,
-      Math.floor(Math.random() * 700) + 100,
+      Math.floor(Math.random() * 200) + 100,
+      Math.floor(Math.random() * 200) + 100,
+      Math.floor(Math.random() * 200) + 100,
     ];
     const { question, answer } = chainAdd(terms, null);
     return { id, type, question, answer, options: numOpts(answer), signature: `a3d-3:${terms.join(",")}` };
@@ -1619,25 +1628,36 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
   }
 
   if (type === "word-problem") {
+    // Lessons 1-9, 3-6, 4-8, 5-7, 6-6, 7-1 to 7-5: add to, take from, put
+    // together, compare ("fewer"/"more"), unknown start, and two-step.
     const item = pickOne(WP_ITEMS);
-    const kind = randInt(0, 3);
+    const kind = randInt(0, 5);
     if (kind === 0) {
       const a = randInt(min, max), b = randInt(min, max);
-      return { id, type, question: `Mia has ${a} ${item}. She gets ${b} more. How many now?`, answer: a + b, options: numOpts(a + b), signature: `wp0:${a},${b}` };
+      return { id, type, question: `Mia has ${a} ${item}. She gets ${b} more. How many does she have now?`, answer: a + b, options: numOpts(a + b), signature: `wp0:${a},${b}` };
     }
     if (kind === 1) {
       const a = randInt(Math.max(min, 20), max + 20), b = randInt(min, a - 1);
       return { id, type, question: `Leo had ${a} ${item}. He gave away ${b}. How many are left?`, answer: a - b, options: numOpts(a - b), signature: `wp1:${a},${b}` };
     }
     if (kind === 2) {
-      const a = randInt(min, max), b = randInt(min, max);
-      const big = Math.max(a, b) + 5, small = Math.min(a, b);
-      return { id, type, question: `Sam has ${big} ${item}. Ana has ${small}. How many more does Sam have?`, answer: big - small, options: numOpts(big - small), signature: `wp2:${big},${small}` };
+      const small = randInt(min, max), big = small + randInt(3, 30);
+      return { id, type, question: `Sam has ${big} ${item}. Ana has ${small}. How many more does Sam have than Ana?`, answer: big - small, options: numOpts(big - small), signature: `wp2:${big},${small}` };
     }
-    // two-step
+    if (kind === 3) {
+      // Unknown start: ? + b = total
+      const start = randInt(min, max), b = randInt(min, max);
+      return { id, type, question: `Some ${item} were in a box. Kim put in ${b} more. Now there are ${start + b}. How many were in the box at first?`, answer: start, options: numOpts(start), signature: `wp3:${start},${b}` };
+    }
+    if (kind === 4) {
+      // Two-step with "fewer" (lesson 1-9 example: Marta 22, Leon 5 fewer, in all?)
+      const a = randInt(Math.max(min, 12), max), fewer = randInt(2, Math.min(9, a - 1));
+      const answer = a + (a - fewer);
+      return { id, type, question: `Marta picked ${a} ${item}. Leon picked ${fewer} fewer than Marta. How many did they pick in all?`, answer, options: numOpts(answer), signature: `wp4:${a},${fewer}` };
+    }
     const a = randInt(min, max), b = randInt(min, max), c = randInt(1, Math.min(a + b - 1, 20));
     const answer = a + b - c;
-    return { id, type, question: `There are ${a} ${item}. ${b} more are added, then ${c} are taken away. How many now?`, answer, options: numOpts(answer), signature: `wp3:${a},${b},${c}` };
+    return { id, type, question: `There are ${a} ${item}. ${b} more are added, then ${c} are taken away. How many now?`, answer, options: numOpts(answer), signature: `wp5:${a},${b},${c}` };
   }
 
   if (type === "tell-time") {
@@ -1665,17 +1685,19 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
   }
 
   if (type === "count-coins") {
-    const coins: [string, number][] = [["quarter", 25], ["dime", 10], ["nickel", 5], ["penny", 1]];
+    // Lessons 8-1 and 8-2: find the value of a set of coins, counting on
+    // from the coin worth the most.
+    const coins: [string, string, number][] = [["quarter", "quarters", 25], ["dime", "dimes", 10], ["nickel", "nickels", 5], ["penny", "pennies", 1]];
     const parts: string[] = [];
     let answer = 0;
-    for (const [name, value] of coins) {
-      const n = randInt(0, name === "quarter" ? 3 : 4);
+    for (const [one, many, value] of coins) {
+      const n = randInt(0, one === "quarter" ? 3 : 4);
       if (n === 0) continue;
       answer += n * value;
-      parts.push(`${n} ${n === 1 ? name : name === "penny" ? "pennies" : name + "s"}`);
+      parts.push(`${n} ${n === 1 ? one : many}`);
     }
     if (parts.length === 0) { parts.push("1 dime"); answer = 10; }
-    return { id, type, question: `${parts.join(", ")} = ? cents`, answer, options: numOpts(answer), signature: `coin:${parts.join(",")}` };
+    return { id, type, question: `${parts.join(", ")}. How many cents in all?`, answer, options: numOpts(answer), signature: `coin:${parts.join(",")}` };
   }
 
   if (type === "money-word") {
@@ -1727,10 +1749,23 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
   }
 
   if (type === "ruler-measure") {
-    const start = randInt(0, 4);
-    const len = randInt(min, max);
-    const unit = Math.random() < 0.5 ? "inches" : "cm";
-    return { id, type, question: `An object starts at ${start} and ends at ${start + len} on a ruler. How many ${unit} long?`, answer: len, options: numOpts(len), signature: `rule:${start},${len}` };
+    // Lessons 12-2 and 12-5: read an object's length off a ruler drawn
+    // above the question. Usually lined up at 0; sometimes not, so the
+    // learner has to count the units rather than read the end mark.
+    const unit = Math.random() < 0.5 ? "inches" : "centimeters";
+    const rulerMax = unit === "inches" ? 12 : 15;
+    const len = randInt(min, Math.min(max, rulerMax - 1));
+    const start = Math.random() < 0.7 ? 0 : randInt(1, rulerMax - len);
+    const thing = pickOne(["crayon", "pencil", "leaf", "ribbon", "key", "spoon"]);
+    return {
+      id,
+      type,
+      question: `How many ${unit} long is the ${thing}?`,
+      answer: len,
+      options: numOpts(len),
+      signature: `rule:${unit},${start},${len}`,
+      ruler: { start, end: start + len, max: rulerMax, unit: unit === "inches" ? "in" : "cm" },
+    };
   }
 
   if (type === "length-compare") {
@@ -1738,19 +1773,22 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
     const long = Math.max(a, b) + 3, short = Math.min(a, b);
     const unit = pickOne(["cm", "inches", "feet", "meters"]);
     const [x, y] = pickOne([["The red ribbon", "the blue ribbon"], ["A rope", "a stick"], ["Max's paper chain", "Zoe's paper chain"]]);
-    return { id, type, question: `${x} is ${long} ${unit}. ${y[0].toUpperCase() + y.slice(1)} is ${short} ${unit}. How much longer is ${x.toLowerCase()}?`, answer: long - short, options: numOpts(long - short), signature: `lc:${long},${short}` };
+    return { id, type, question: `${x} is ${long} ${unit}. ${y[0].toUpperCase() + y.slice(1)} is ${short} ${unit}. How much longer is ${x.startsWith("The ") || x.startsWith("A ") ? x[0].toLowerCase() + x.slice(1) : x}?`, answer: long - short, options: numOpts(long - short), signature: `lc:${long},${short}` };
   }
 
   if (type === "shape-attributes") {
-    const shapes: [string, number][] = [["triangle", 3], ["quadrilateral", 4], ["pentagon", 5], ["hexagon", 6], ["octagon", 8]];
+    // Lessons 13-1 to 13-4: triangles, quadrilaterals, pentagons, hexagons
+    // (sides, vertices, angles) and cubes (faces, vertices, edges).
+    const shapes: [string, number][] = [["triangle", 3], ["quadrilateral", 4], ["pentagon", 5], ["hexagon", 6]];
     const [name, sides] = pickOne(shapes);
-    const kind = randInt(0, 3);
-    if (kind === 0) return { id, type, question: `How many sides does a ${name} have?`, answer: sides, options: anyOpts(sides, [3, 4, 5, 6, 8]), signature: `sh0:${name}` };
-    if (kind === 1) return { id, type, question: `How many vertices (corners) does a ${name} have?`, answer: sides, options: anyOpts(sides, [3, 4, 5, 6, 8]), signature: `sh1:${name}` };
-    if (kind === 2) return { id, type, question: `A flat shape with ${sides} sides is a...`, answer: name, options: strOpts(name, shapes.map(([n]) => n)), signature: `sh2:${name}` };
-    const solids: [string, number][] = [["cube", 6], ["rectangular prism", 6]];
-    const [solid, faces] = pickOne(solids);
-    return { id, type, question: `How many faces does a ${solid} have?`, answer: faces, options: [4, 5, 6, 8], signature: `sh3:${solid}` };
+    const kind = randInt(0, 4);
+    const counts = [3, 4, 5, 6];
+    if (kind === 0) return { id, type, question: `How many sides does a ${name} have?`, answer: sides, options: counts, signature: `sh0:${name}` };
+    if (kind === 1) return { id, type, question: `How many vertices (corners) does a ${name} have?`, answer: sides, options: counts, signature: `sh1:${name}` };
+    if (kind === 2) return { id, type, question: `How many angles does a ${name} have?`, answer: sides, options: counts, signature: `sh2:${name}` };
+    if (kind === 3) return { id, type, question: `A shape with ${sides} sides and ${sides} vertices is a...`, answer: name, options: shapes.map(([n]) => n), signature: `sh3:${name}` };
+    const [part, n] = pickOne<[string, number]>([["faces", 6], ["vertices", 8], ["edges", 12]]);
+    return { id, type, question: `How many ${part} does a cube have?`, answer: n, options: [4, 6, 8, 12], signature: `sh4:${part}` };
   }
 
   if (type === "partition-rect") {
@@ -1768,13 +1806,250 @@ export function buildProblem(type: ProblemType, min: number, max: number): Probl
   }
 
   if (type === "length-word") {
+    // Lessons 14-1 to 14-3: join, separate, compare, two-step, and
+    // distance around, all in one unit.
     const a = randInt(min, max), b = randInt(min, max);
-    const unit = pickOne(["feet", "meters", "inches", "cm"]);
-    if (Math.random() < 0.5) {
+    const unit = pickOne(["feet", "meters", "inches", "centimeters"]);
+    const one = unit === "feet" ? "foot" : unit === "inches" ? "inch" : unit.replace(/s$/, "");
+    const kind = randInt(0, 3);
+    if (kind === 0) {
       return { id, type, question: `A fence has two parts: ${a} ${unit} and ${b} ${unit}. How long is the fence?`, answer: a + b, options: numOpts(a + b), signature: `lw0:${a},${b}` };
     }
+    if (kind === 1) {
+      const total = a + b;
+      return { id, type, question: `A ${total}-${one} rope is cut. One piece is ${a} ${unit}. How long is the other piece?`, answer: b, options: numOpts(b), signature: `lw1:${total},${a}` };
+    }
+    if (kind === 2) {
+      // Lesson 14-1 example: red 14 ft, blue 8 ft longer, in all?
+      const red = randInt(10, 30), more = randInt(3, 15);
+      const answer = red + red + more;
+      return { id, type, question: `A red ribbon is ${red} ${unit} long. A blue ribbon is ${more} ${unit} longer. How much ribbon in all?`, answer, options: numOpts(answer), signature: `lw2:${red},${more}` };
+    }
+    const w = randInt(3, 20), h = randInt(3, 20);
+    return { id, type, question: `A card is ${w} ${unit} long and ${h} ${unit} wide. What is the distance around it? (${w} + ${h} + ${w} + ${h})`, answer: 2 * (w + h), options: numOpts(2 * (w + h)), signature: `lw3:${w},${h}` };
+  }
+
+  if (type === "true-equation") {
+    // Lessons 7-6 and 7-7: make an equation true. Both sides have the same
+    // value: 8 + 6 = ? + 7, or 15 - 6 = 4 + ?
+    const a = randInt(2, 9), b = randInt(2, 9);
     const total = a + b;
-    return { id, type, question: `A ${total}-${unit === "feet" ? "foot" : unit === "inches" ? "inch" : unit.replace(/s$/, "")} rope is cut. One piece is ${a} ${unit}. How long is the other piece?`, answer: b, options: numOpts(b), signature: `lw1:${total},${a}` };
+    if (Math.random() < 0.5) {
+      const c = randInt(1, Math.min(9, total - 1));
+      const answer = total - c;
+      return { id, type, question: `${a} + ${b} = ? + ${c}`, answer, options: numOpts(answer), signature: `teq0:${a},${b},${c}` };
+    }
+    const big = total + randInt(0, 5), sub = big - total;
+    const left = big - sub; // = total
+    const c = randInt(1, Math.min(9, left - 1));
+    const answer = left - c;
+    return { id, type, question: `${big} − ${sub} = ${c} + ?`, answer, options: numOpts(answer), signature: `teq1:${big},${sub},${c}` };
+  }
+
+  if (type === "coin-word") {
+    // Lessons 8-1 and 8-2: problems with coins, using ¢
+    const kind = randInt(0, 2);
+    if (kind === 0) {
+      const have = randInt(2, 3) * 25 + randInt(0, 4) * 5;
+      const cost = randInt(4, Math.floor(have / 5) - 1) * 5;
+      return { id, type, question: `You have ${have}¢. You buy a sticker for ${cost}¢. How many cents are left?`, answer: have - cost, options: numOpts(have - cost), signature: `cw0:${have},${cost}` };
+    }
+    if (kind === 1) {
+      const have = randInt(4, 19) * 5;
+      return { id, type, question: `You have ${have}¢. How many more cents do you need to make 1 dollar (100¢)?`, answer: 100 - have, options: numOpts(100 - have), signature: `cw1:${have}` };
+    }
+    const q = randInt(1, 3), d = randInt(1, 4);
+    const answer = q * 25 + d * 10;
+    return { id, type, question: `Jo has ${q} ${q === 1 ? "quarter" : "quarters"} and ${d} ${d === 1 ? "dime" : "dimes"}. How many cents does Jo have?`, answer, options: numOpts(answer), signature: `cw2:${q},${d}` };
+  }
+
+  if (type === "count-bills") {
+    // Lessons 8-3 and 8-4: dollar bills, using $. Counting a set of bills,
+    // and the two-step "how much more" from the lesson example.
+    const bills = [20, 10, 5, 1];
+    if (Math.random() < 0.6) {
+      const parts: string[] = [];
+      let answer = 0;
+      for (const b of bills) {
+        const n = randInt(0, b === 20 ? 2 : 3);
+        if (n === 0) continue;
+        answer += n * b;
+        parts.push(`${n === 1 ? "one" : n === 2 ? "two" : "three"} $${b} ${n === 1 ? "bill" : "bills"}`);
+      }
+      if (parts.length === 0) { parts.push("one $10 bill"); answer = 10; }
+      return { id, type, question: `${parts.join(", ")}. How many dollars in all?`, answer, options: numOpts(answer), signature: `bill0:${parts.join(",")}` };
+    }
+    const fives = randInt(1, 2), ones = randInt(1, 4);
+    const lena = fives * 5 + ones;
+    const tyson = pickOne([20, 50].filter((t) => t > lena));
+    return { id, type, question: `Lena has ${fives === 1 ? "one" : "two"} $5 ${fives === 1 ? "bill" : "bills"} and ${ones} $1 ${ones === 1 ? "bill" : "bills"}. Tyson has one $${tyson} bill. How much more money does Tyson have?`, answer: tyson - lena, options: numOpts(tyson - lena), signature: `bill1:${lena},${tyson}` };
+  }
+
+  if (type === "time-before-after") {
+    // Lesson 8-7: time before and after the hour ("8:35 is 25 minutes
+    // before 9"), quarter past, half past, quarter to.
+    const hour = randInt(1, 12);
+    const next = (hour % 12) + 1;
+    const fmt = (h: number, m: number) => `${h}:${String(m).padStart(2, "0")}`;
+    const kind = randInt(0, 2);
+    if (kind === 0) {
+      const minute = randInt(7, 11) * 5;
+      const answer = 60 - minute;
+      return { id, type, question: `${fmt(hour, minute)} is how many minutes before ${next}:00?`, answer, options: anyOpts(answer, [5, 10, 15, 20, 25, 30, 35]).sort((a, b) => a - b), signature: `tba0:${hour},${minute}`, clock: { hour, minute } };
+    }
+    if (kind === 1) {
+      const minute = randInt(1, 6) * 5;
+      return { id, type, question: `${fmt(hour, minute)} is how many minutes after ${hour}:00?`, answer: minute, options: anyOpts(minute, [5, 10, 15, 20, 25, 30, 35]).sort((a, b) => a - b), signature: `tba1:${hour},${minute}`, clock: { hour, minute } };
+    }
+    const [words, m] = pickOne<[string, number]>([["quarter past", 15], ["half past", 30], ["quarter to", 45]]);
+    const answer = m === 45 ? fmt(hour, 45) : fmt(hour, m);
+    const shownHour = m === 45 ? next : hour;
+    const candidates = [fmt(hour, 15), fmt(hour, 30), fmt(hour, 45), fmt(next, 15), fmt(hour, 25)];
+    return { id, type, question: `What time is ${words} ${shownHour}?`, answer, options: strOpts(answer, candidates), signature: `tba2:${words},${shownHour}` };
+  }
+
+  if (type === "hundreds-tens") {
+    // Lessons 9-1 to 9-3: 10 tens make 1 hundred; 600 is 6 hundreds; the
+    // value of a digit.
+    const kind = randInt(0, 3);
+    if (kind === 0) return { id, type, question: "10 tens = ?", answer: 100, options: [10, 100, 110, 1000], signature: "ht0" };
+    const h = randInt(1, 9);
+    if (kind === 1) return { id, type, question: `${h} hundreds = ?`, answer: h * 100, options: anyOpts(h * 100, [h, h * 10, h * 100, h * 1000]), signature: `ht1:${h}` };
+    if (kind === 2) return { id, type, question: `How many tens make ${h * 100}?`, answer: h * 10, options: anyOpts(h * 10, [h, h * 10, h * 100, h * 10 + 10]).sort((a, b) => a - b), signature: `ht2:${h}` };
+    const n = randInt(100, 999);
+    const digits = String(n).split("").map(Number);
+    const pos = randInt(0, 2);
+    const answer = digits[pos] * [100, 10, 1][pos];
+    const name = ["hundreds", "tens", "ones"][pos];
+    const opts = [digits[pos], digits[pos] * 10, digits[pos] * 100].filter((v, i, a) => a.indexOf(v) === i);
+    if (opts.length < 2) opts.push(digits[pos] + 1);
+    return { id, type, question: `What is the value of the ${name} digit in ${n}?`, answer, options: opts.sort((a, b) => a - b), signature: `ht3:${n},${pos}` };
+  }
+
+  if (type === "same-number") {
+    // Lesson 9-5: different ways to name the same number, with one place
+    // regrouped (2 hundreds + 13 tens + 5 ones = 335).
+    const h = randInt(2, 8), t = randInt(1, 9), o = randInt(0, 9);
+    const n = h * 100 + t * 10 + o;
+    if (Math.random() < 0.5) {
+      return { id, type, question: `${h - 1} hundreds + ${t + 10} tens + ${o} ones = ?`, answer: n, options: anyOpts(n, [n, n - 100, n + 100, (h - 1) * 100 + t * 10 + o + 10]).sort((a, b) => a - b), signature: `same0:${n}` };
+    }
+    const answer = t - 1;
+    return { id, type, question: `${n} = ${h} hundreds + ? tens + ${o + 10} ones`, answer, options: anyOpts(answer, [answer, t, t + 1, answer + 10]).sort((a, b) => a - b), signature: `same1:${n}` };
+  }
+
+  if (type === "skip-1000") {
+    // Lessons 9-6 and 9-7: skip count by 5s, 10s and 100s within 1,000,
+    // from any start (400, 405, 410 ... / 400, 500, 600 ...).
+    const step = pickOne([5, 10, 100]);
+    const start = step === 100 ? randInt(1, 6) * 100 + pickOne([0, 0, 20, 50]) : step === 10 ? randInt(10, 96) * 10 + pickOne([0, 0, 5]) : randInt(20, 194) * 5;
+    const answer = start + 3 * step;
+    const near = step === 100 ? [answer + 100, answer - 100, answer + 10] : step === 10 ? [answer + 10, answer - 10, answer + 100] : [answer + 5, answer - 5, answer + 10];
+    return { id, type, question: `${start}, ${start + step}, ${start + 2 * step}, ?`, answer, options: anyOpts(answer, [answer, ...near]).sort((a, b) => a - b), signature: `sk1000:${step},${start}` };
+  }
+
+  if (type === "partial-sums") {
+    // Lessons 4-3, 4-4, 10-5, 10-6: add with partial sums. Asks for one of
+    // the partial sums, or the total from the partial sums.
+    const threeDigit = max >= 100;
+    const a = threeDigit ? randInt(100, 499) : randInt(10, 59);
+    const b = threeDigit ? randInt(100, 499) : randInt(10, 39);
+    const place = threeDigit ? pickOne(["hundreds", "tens", "ones"]) : pickOne(["tens", "ones"]);
+    const digit = (n: number, p: string) => (p === "hundreds" ? Math.floor(n / 100) * 100 : p === "tens" ? Math.floor((n % 100) / 10) * 10 : n % 10);
+    if (Math.random() < 0.6) {
+      const answer = digit(a, place) + digit(b, place);
+      return { id, type, question: `${a} + ${b}: add the ${place}. ${digit(a, place)} + ${digit(b, place)} = ?`, answer, options: numOpts(answer), signature: `ps0:${a},${b},${place}` };
+    }
+    const parts = (threeDigit ? ["hundreds", "tens", "ones"] : ["tens", "ones"]).map((p) => digit(a, p) + digit(b, p));
+    const answer = a + b;
+    return { id, type, question: `${a} + ${b}. The partial sums are ${parts.join(", ")}. What is the sum?`, answer, options: numOpts(answer), signature: `ps1:${a},${b}` };
+  }
+
+  if (type === "length-estimate") {
+    // Lesson 12-1: estimate with familiar objects (paper clip ~ 1 inch,
+    // large book ~ 1 foot, button ~ 1 centimeter, table width ~ 1 meter)
+    const refs: [string, string][] = [
+      ["a small paper clip", "about 1 inch"],
+      ["a large book", "about 1 foot"],
+      ["a small button", "about 1 centimeter"],
+      ["the width of a table", "about 1 meter"],
+      ["a baseball bat", "about 1 yard"],
+    ];
+    if (Math.random() < 0.6) {
+      const [thing, answer] = pickOne(refs);
+      return { id, type, question: `About how long is ${thing}?`, answer, options: anyOpts(answer, refs.map(([, a]) => a)), signature: `le0:${thing}` };
+    }
+    const clips = randInt(2, 6);
+    const answer = `about ${clips} inches`;
+    return { id, type, question: `A small paper clip is about 1 inch. A marker is about ${clips} paper clips long. About how long is the marker?`, answer, options: [answer, `about ${clips} feet`, `about ${clips} yards`, `about ${clips} meters`], signature: `le1:${clips}` };
+  }
+
+  if (type === "unit-relations") {
+    // Lessons 12-3, 12-4, 12-6, 12-7: inches/feet/yards, centimeters/meters,
+    // and "smaller unit, more units"
+    const kind = randInt(0, 2);
+    if (kind === 0) {
+      const facts: [string, number][] = [["1 foot = ? inches", 12], ["1 yard = ? feet", 3], ["1 yard = ? inches", 36], ["1 meter = ? centimeters", 100]];
+      const [q, answer] = pickOne(facts);
+      return { id, type, question: q, answer, options: [3, 12, 36, 100], signature: `ur0:${q}` };
+    }
+    if (kind === 1) {
+      const [big, small, per] = pickOne<[string, string, number]>([["feet", "inches", 12], ["yards", "feet", 3], ["meters", "centimeters", 100]]);
+      const n = per === 100 ? 1 : randInt(1, per === 12 ? 2 : 3);
+      const answer = n * per;
+      const bigOne = big === "feet" ? (n === 1 ? "foot" : "feet") : n === 1 ? big.replace(/s$/, "") : big;
+      return { id, type, question: `A rug is ${n} ${bigOne} long. How many ${small} long is it?`, answer, options: numOpts(answer), signature: `ur1:${big},${n}` };
+    }
+    const [a, b] = pickOne<[string, string]>([["inches", "feet"], ["feet", "yards"], ["centimeters", "meters"], ["inches", "yards"]]);
+    const answer = a; // smaller unit needs more of them
+    return { id, type, question: `You measure a hallway in ${a} and in ${b}. Which needs more units?`, answer, options: Math.random() < 0.5 ? [a, b] : [b, a], signature: `ur2:${a},${b}` };
+  }
+
+  if (type === "equal-shares") {
+    // Lessons 13-6 and 13-7: halves, thirds, fourths, in words, with a
+    // picture. No fraction notation in Grade 2.
+    const parts = pickOne([2, 3, 4]);
+    const shape = pickOne<FractionVisual["shape"]>(["circle", "square", "bar"]);
+    const shaded = randInt(1, parts);
+    const word: Record<number, [string, string]> = { 2: ["half", "halves"], 3: ["third", "thirds"], 4: ["fourth", "fourths"] };
+    const numWords = ["", "one", "two", "three", "four"];
+    const kind = randInt(0, 2);
+    if (kind === 0) {
+      const answer = shaded === parts ? "one whole" : `${numWords[shaded]} ${shaded === 1 ? word[parts][0] : word[parts][1]}`;
+      const candidates = ["one half", "one third", "one fourth", "two thirds", "two fourths", "three fourths", "one whole", "two halves"];
+      return { id, type, question: "How much of the shape is shaded?", answer, options: strOpts(answer, candidates), signature: `es0:${shape},${parts},${shaded}`, visual: [{ shape, total: parts, shaded }] };
+    }
+    if (kind === 1) {
+      const answer = word[parts][1];
+      return { id, type, question: "The shape is split into equal shares. What are the shares called?", answer, options: ["halves", "thirds", "fourths"], signature: `es1:${shape},${parts}`, visual: [{ shape, total: parts, shaded: 0 }] };
+    }
+    const answer = parts;
+    return { id, type, question: `How many ${word[parts][1]} make one whole?`, answer, options: [2, 3, 4], signature: `es2:${parts}` };
+  }
+
+  if (type === "line-plot") {
+    // Lessons 15-1 and 15-2: read a line plot of lengths in inches.
+    const lo = randInt(1, 4);
+    const values = Array.from({ length: 5 }, (_, i) => lo + i);
+    const counts = values.map(() => randInt(0, 4));
+    const top = Math.max(...counts);
+    if (counts.filter((c) => c === top).length > 1 || top === 0) {
+      const i = randInt(0, 4);
+      counts[i] = top + 1;
+    }
+    const rows: [string, number][] = values.map((v, i) => [String(v), counts[i]]);
+    const graph = { kind: "line" as const, title: "Lengths of objects (inches)", rows };
+    const kind = randInt(0, 2);
+    if (kind === 0) {
+      const i = randInt(0, 4);
+      return { id, type, question: `How many objects are ${values[i]} inches long?`, answer: counts[i], options: anyOpts(counts[i], [0, 1, 2, 3, 4, 5]).sort((a, b) => a - b), signature: `lp0:${counts.join(",")},${i}`, graph };
+    }
+    if (kind === 1) {
+      const best = values[counts.indexOf(Math.max(...counts))];
+      return { id, type, question: "Which length has the most objects?", answer: `${best} inches`, options: anyOpts(`${best} inches`, values.map((v) => `${v} inches`)), signature: `lp1:${counts.join(",")}`, graph };
+    }
+    const total = counts.reduce((a, b) => a + b, 0);
+    return { id, type, question: "How many objects were measured in all?", answer: total, options: numOpts(total), signature: `lp2:${counts.join(",")}`, graph };
   }
 
   if (type === "picture-graph" || type === "bar-graph") {

@@ -52,9 +52,27 @@ describe("spaceMathSkills", () => {
   });
 
   it("the Grade 2 enVision topics appear on the ladder in topic order", () => {
-    const order = ["g2-equal-groups", "g2-add-four", "g2-word-problem", "g2-time", "g2-expanded", "g2-add-3digit", "g2-sub-borrow-hard", "g2-ruler", "g2-shapes", "g2-number-line", "g2-bar-graph"];
+    const order = ["g2-equal-groups", "g2-add-four", "g2-word-problem", "g2-true-equation", "g2-coins", "g2-time", "g2-hundreds-tens", "g2-skip-1000", "g2-mental-100", "g2-add-3digit", "g2-sub-borrow-hard", "g2-length-estimate", "g2-unit-relations", "g2-shapes", "g2-equal-shares", "g2-length-word", "g2-line-plot", "g2-bar-graph"];
     const idx = order.map((k) => SKILLS.findIndex((s) => s.key === k));
     expect(idx.every((i) => i >= 0)).toBe(true);
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+  });
+
+  // Grade 2 (enVision Topics 2-15) must be plain multiple choice, with
+  // whole-number answers staying within 1,000.
+  it("Grade 2 questions are multiple choice and stay within 1,000", () => {
+    const start = SKILLS.findIndex((s) => s.key === "g2-odd-even");
+    const end = SKILLS.findIndex((s) => s.key === "g2-frac-equal-parts");
+    for (const skill of SKILLS.slice(start, end)) {
+      for (let i = 0; i < 200; i++) {
+        const p = buildProblem(skill.type, skill.min, skill.max);
+        expect(p.shadeTarget, skill.key).toBeUndefined();
+        expect(p.options.length, skill.key).toBeGreaterThanOrEqual(2);
+        if (typeof p.answer === "number") {
+          expect(p.answer, `${skill.key}: ${p.question}`).toBeGreaterThanOrEqual(0);
+          expect(p.answer, `${skill.key}: ${p.question}`).toBeLessThanOrEqual(1000);
+        }
+      }
+    }
   });
 });

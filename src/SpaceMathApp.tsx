@@ -225,6 +225,7 @@ const ClockFace = ({ hour, minute, size = 150 }: { hour: number; minute: number;
 // A picture graph (one dot per unit) or a horizontal bar graph with a scale.
 
 const DataGraph = ({ graph }: { graph: NonNullable<Problem["graph"]> }) => {
+  if (graph.kind === "line") return <LinePlot graph={graph} />;
   const maxVal = Math.max(...graph.rows.map(([, v]) => v));
   const scaleMax = Math.ceil(maxVal / 5) * 5;
   return (
@@ -265,6 +266,69 @@ const DataGraph = ({ graph }: { graph: NonNullable<Problem["graph"]> }) => {
         </tbody>
       </table>
     </div>
+  );
+};
+
+// ─── LinePlot ─────────────────────────────────────────────────────────────────
+// A number line with one dot above a value for each object measured.
+
+const LinePlot = ({ graph }: { graph: NonNullable<Problem["graph"]> }) => {
+  const step = 44;
+  const dot = 14;
+  const maxCount = Math.max(1, ...graph.rows.map(([, c]) => c));
+  const w = step * graph.rows.length + 20;
+  const h = maxCount * (dot + 4) + 44;
+  const ink = "var(--ds-color-text-primary)";
+  const baseY = h - 28;
+  return (
+    <div className='inline-block text-ink-primary'>
+      <div className='text-sm font-bold text-ink-muted mb-1'>{graph.title}</div>
+      <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} role='img' aria-label={graph.title}>
+        <line x1={4} y1={baseY} x2={w - 4} y2={baseY} stroke={ink} strokeWidth={2} />
+        {graph.rows.map(([label, count], i) => {
+          const x = 10 + step * i + step / 2;
+          return (
+            <g key={label}>
+              <line x1={x} y1={baseY - 5} x2={x} y2={baseY + 5} stroke={ink} strokeWidth={2} />
+              <text x={x} y={baseY + 20} textAnchor='middle' fontSize={14} fontWeight={700} fill={ink}>
+                {label}
+              </text>
+              {Array.from({ length: count }, (_, j) => (
+                <circle key={j} cx={x} cy={baseY - 12 - j * (dot + 4)} r={dot / 2} fill='var(--ds-color-primary-solid)' />
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+// ─── RulerPicture ─────────────────────────────────────────────────────────────
+// An object lying along a ruler, for reading its length.
+
+const RulerPicture = ({ ruler }: { ruler: NonNullable<Problem["ruler"]> }) => {
+  const unitPx = ruler.unit === "in" ? 26 : 20;
+  const pad = 12;
+  const w = ruler.max * unitPx + pad * 2;
+  const ink = "var(--ds-color-text-primary)";
+  const x = (n: number) => pad + n * unitPx;
+  return (
+    <svg width={w} height={92} viewBox={`0 0 ${w} 92`} role='img' aria-label={`An object lying along a ruler marked in ${ruler.unit}`} style={{ maxWidth: "100%" }}>
+      <rect x={x(ruler.start)} y={8} width={(ruler.end - ruler.start) * unitPx} height={22} rx={11} fill='var(--ds-color-primary-solid)' />
+      <rect x={pad - 6} y={38} width={w - 2 * pad + 12} height={46} rx={4} fill='var(--ds-color-surface-sunken)' stroke={ink} strokeWidth={1.5} />
+      {Array.from({ length: ruler.max + 1 }, (_, i) => (
+        <g key={i}>
+          <line x1={x(i)} y1={38} x2={x(i)} y2={54} stroke={ink} strokeWidth={1.5} />
+          <text x={x(i)} y={72} textAnchor='middle' fontSize={12} fontWeight={700} fill={ink}>
+            {i}
+          </text>
+        </g>
+      ))}
+      <text x={w - pad} y={81} textAnchor='end' fontSize={9} fill='var(--ds-color-text-muted)'>
+        {ruler.unit}
+      </text>
+    </svg>
   );
 };
 
@@ -930,6 +994,11 @@ export default function SpaceMathApp() {
                     {problem.clock && (
                       <div className='flex justify-center mt-2'>
                         <ClockFace hour={problem.clock.hour} minute={problem.clock.minute} />
+                      </div>
+                    )}
+                    {problem.ruler && (
+                      <div className='flex justify-center mt-2'>
+                        <RulerPicture ruler={problem.ruler} />
                       </div>
                     )}
                     {problem.graph && (
