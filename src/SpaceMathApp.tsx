@@ -566,7 +566,9 @@ const SessionProgressBar = ({ correct }: { correct: number }) => {
 // ─── Static decorations (module-level so Math.random never runs during render) ─
 
 /**
- * The starfield, nebulae and comets, painted on a canvas.
+ * Flying through space: stars stream out from the center as if the ship is
+ * moving forward, with soft nebulae drifting past behind them. Painted on a
+ * canvas.
  *
  * Like the rest of this page, these colors are literal, not design-system
  * tokens — Space Math is meant to look like a fun kids' game, not match the
@@ -577,125 +579,106 @@ function SpaceBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current!;
+    const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    type Star = { x: number; y: number; r: number; phase: number; speed: number };
-    type Comet = { x: number; y: number; vx: number; vy: number; len: number; life: number; maxLife: number };
+    // Each star sits in 3D: x/y spread around the ship's path, z = distance
+    // ahead. Every frame z shrinks, so the star's projection slides outward
+    // from the center and grows, and we draw a streak from where it was.
+    type Star = { x: number; y: number; z: number; pz: number; tint: string };
+    const DEPTH = 1000;
+    const SPREAD = 1100;
+    const TINTS = ["255,255,255", "255,255,255", "255,255,255", "190,215,255", "255,230,200"];
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    const SPEED = reduceMotion ? 1.2 : 6; // depth units per frame at 60fps
 
-    const stars: Star[] = Array.from({ length: 180 }, () => ({
-      x: Math.random(),
-      y: Math.random(),
-      r: Math.random() * 1.6 + 0.3,
-      phase: Math.random() * Math.PI * 2,
-      speed: Math.random() * 0.025 + 0.004,
-    }));
+    const newStar = (z = Math.random() * DEPTH): Star => ({
+      // Spread wide enough that even the farthest stars cover the screen
+      x: (Math.random() - 0.5) * 2 * SPREAD,
+      y: (Math.random() - 0.5) * 2 * SPREAD,
+      z,
+      pz: z,
+      tint: TINTS[Math.floor(Math.random() * TINTS.length)],
+    });
+    const stars: Star[] = Array.from({ length: 320 }, () => newStar());
 
-    const comets: Comet[] = [];
-    let nextCometIn = 30 + Math.random() * 60;
-
-    function spawnComet() {
-      const w = canvas.width;
-      const h = canvas.height;
-      const angle = (6 + Math.random() * 24) * (Math.PI / 180);
-      const speed = 10 + Math.random() * 9;
-      comets.push({
-        x: -280,
-        y: Math.random() * h * 0.8,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        len: 90 + Math.random() * 170,
-        life: 0,
-        maxLife: Math.ceil((w + 560) / speed),
-      });
-    }
-
+    let dpr = 1;
     function resize() {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas!.width = Math.round(canvas!.offsetWidth * dpr);
+      canvas!.height = Math.round(canvas!.offsetHeight * dpr);
     }
     resize();
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
     const NEBULAE = [
-      { cx: 0.12, cy: 0.42, rr: 0.48, rgb: "59,130,246",  a: 0.08 },
-      { cx: 0.88, cy: 0.16, rr: 0.40, rgb: "139,92,246",  a: 0.07 },
-      { cx: 0.52, cy: 0.88, rr: 0.34, rgb: "16,185,129",  a: 0.05 },
+      { cx: 0.15, cy: 0.4, rr: 0.5, rgb: "59,130,246", a: 0.09 },
+      { cx: 0.85, cy: 0.2, rr: 0.42, rgb: "139,92,246", a: 0.08 },
+      { cx: 0.55, cy: 0.85, rr: 0.36, rgb: "16,185,129", a: 0.05 },
     ];
 
-    let frame = 0;
-    let animId: number;
+    let animId = 0;
+    let last = performance.now();
+    let t = 0;
 
-    function draw() {
-      const w = canvas.width;
-      const h = canvas.height;
+    function draw(now: number) {
+      const w = canvas!.width;
+      const h = canvas!.height;
+      // Frame-rate independent: 1 = one 60fps frame. Capped so returning to
+      // a background tab doesn't teleport every star.
+      const step = Math.min((now - last) / (1000 / 60), 3);
+      last = now;
+      t += step;
       if (w === 0 || h === 0) { animId = requestAnimationFrame(draw); return; }
 
-      ctx.clearRect(0, 0, w, h);
+      ctx!.clearRect(0, 0, w, h);
 
-      for (const n of NEBULAE) {
-        const gx = n.cx * w, gy = n.cy * h, gr = n.rr * Math.max(w, h);
-        const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+      // Nebulae drift slowly outward too, so the whole scene feels in motion
+      for (let k = 0; k < NEBULAE.length; k++) {
+        const n = NEBULAE[k];
+        const drift = 0.03 * Math.sin(t * 0.002 + k * 2);
+        const gx = (n.cx + (n.cx - 0.5) * drift) * w;
+        const gy = (n.cy + (n.cy - 0.5) * drift) * h;
+        const gr = n.rr * Math.max(w, h) * (1 + drift);
+        const g = ctx!.createRadialGradient(gx, gy, 0, gx, gy, gr);
         g.addColorStop(0, `rgba(${n.rgb},${n.a})`);
         g.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, w, h);
+        ctx!.fillStyle = g;
+        ctx!.fillRect(0, 0, w, h);
       }
 
-      for (const s of stars) {
-        const alpha = 0.15 + 0.85 * (0.5 + 0.5 * Math.sin(frame * s.speed + s.phase));
-        ctx.beginPath();
-        ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
-        ctx.fill();
+      const cx = w / 2;
+      const cy = h / 2;
+      const focal = Math.max(w, h) * 0.5;
+      ctx!.lineCap = "round";
+      for (let i = 0; i < stars.length; i++) {
+        const s = stars[i];
+        s.pz = s.z;
+        s.z -= SPEED * step;
+        if (s.z < 1) { stars[i] = newStar(DEPTH); continue; }
+        const sx = cx + (s.x / s.z) * focal;
+        const sy = cy + (s.y / s.z) * focal;
+        if (sx < -50 || sx > w + 50 || sy < -50 || sy > h + 50) { stars[i] = newStar(DEPTH); continue; }
+        const px = cx + (s.x / s.pz) * focal;
+        const py = cy + (s.y / s.pz) * focal;
+        const near = 1 - s.z / DEPTH; // 0 far .. 1 close
+        const alpha = Math.min(1, 0.2 + near * 1.1);
+        const width = (0.4 + near * 2.2) * dpr;
+        ctx!.strokeStyle = `rgba(${s.tint},${alpha.toFixed(3)})`;
+        ctx!.lineWidth = width;
+        ctx!.beginPath();
+        ctx!.moveTo(px, py);
+        ctx!.lineTo(sx + 0.01, sy);
+        ctx!.stroke();
       }
 
-      if (--nextCometIn <= 0) {
-        spawnComet();
-        nextCometIn = 90 + Math.random() * 180;
-      }
-
-      for (let i = comets.length - 1; i >= 0; i--) {
-        const c = comets[i];
-        const p = c.life / c.maxLife;
-        const alpha = p < 0.08 ? p / 0.08 : p > 0.85 ? (1 - p) / 0.15 : 1;
-        const mag = Math.hypot(c.vx, c.vy);
-        const tx = c.x - (c.vx / mag) * c.len;
-        const ty = c.y - (c.vy / mag) * c.len;
-
-        const streak = ctx.createLinearGradient(tx, ty, c.x, c.y);
-        streak.addColorStop(0, "rgba(255,255,255,0)");
-        streak.addColorStop(0.5, `rgba(180,210,255,${(alpha * 0.4).toFixed(3)})`);
-        streak.addColorStop(1, `rgba(255,255,255,${alpha.toFixed(3)})`);
-        ctx.beginPath();
-        ctx.moveTo(tx, ty);
-        ctx.lineTo(c.x, c.y);
-        ctx.strokeStyle = streak;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        const headGlow = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 6);
-        headGlow.addColorStop(0, `rgba(255,255,255,${alpha.toFixed(3)})`);
-        headGlow.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = headGlow;
-        ctx.fill();
-
-        c.x += c.vx;
-        c.y += c.vy;
-        c.life++;
-        if (c.life >= c.maxLife) comets.splice(i, 1);
-      }
-
-      frame++;
       animId = requestAnimationFrame(draw);
     }
 
-    draw();
+    animId = requestAnimationFrame(draw);
     return () => { cancelAnimationFrame(animId); ro.disconnect(); };
   }, []);
 
@@ -857,7 +840,7 @@ export default function SpaceMathApp() {
     <div className='h-full bg-surface-sunken text-ink-primary relative flex flex-col overflow-hidden safe-area'>
       <SpaceBackground />
       <StarBank score={score} onClear={clearStars} />
-      <main className='relative z-10 w-full pt-4 sm:pt-6 px-4 sm:px-6 pb-20 sm:pb-24 flex flex-col items-center flex-1 min-h-0 overflow-hidden'>
+      <main className='relative z-10 w-full pt-[26px] sm:pt-[34px] px-[26px] sm:px-[34px] pb-[90px] sm:pb-[106px] flex flex-col items-center flex-1 min-h-0 overflow-hidden'>
         <div className='w-full flex justify-between items-center mb-3 sm:mb-4 shrink-0'>
           <div className='flex items-center gap-3'>
             <div className='p-2 bg-primary-solid rounded-md'>
